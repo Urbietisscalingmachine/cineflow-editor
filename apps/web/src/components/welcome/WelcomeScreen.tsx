@@ -166,28 +166,23 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ initialTab }) => {
       const apiKey = keyData.k || keyData.key || keyData.apiKey;
       if (!apiKey) throw new Error("No API key returned — got: " + JSON.stringify(keyData));
 
-      // Step 2: Prepare file for Whisper (extract audio if >20MB)
-      let fileForWhisper: File | Blob = file;
+      // Step 2: Compress if needed (FFmpeg WASM → MediaRecorder fallback)
+      let fileForWhisper: File;
       
-      if (file.size > 20 * 1024 * 1024) {
-        setProcessing({ step: "transcribing", progress: 15, message: "Extracting audio (large file)..." });
+      if (file.size > 24 * 1024 * 1024) {
+        setProcessing({ step: "transcribing", progress: 15, message: "Extracting audio..." });
         try {
-          const { extractAudioForWhisper } = await import("../../lib/extract-audio-ffmpeg");
-          const audioFile = await extractAudioForWhisper(file, (msg, pct) => {
+          const { compressForWhisper } = await import("../../lib/compress-video-for-whisper");
+          fileForWhisper = await compressForWhisper(file, (msg, pct) => {
             setProcessing({ step: "transcribing", progress: 15 + pct * 0.2, message: msg });
           });
-          if (audioFile) {
-            fileForWhisper = audioFile;
-            console.log(`[cineflow] Audio extracted: ${(audioFile.size/1024).toFixed(0)}KB from ${(file.size/1048576).toFixed(1)}MB video`);
-          }
+          console.log(`[cineflow] Compressed: ${(fileForWhisper.size/1024).toFixed(0)}KB from ${(file.size/1048576).toFixed(1)}MB`);
         } catch (extractErr) {
-          console.warn("[cineflow] Audio extraction failed, trying raw file:", extractErr);
+          console.error("[cineflow] All compression failed:", extractErr);
+          throw new Error(`Video too large (${(file.size/1048576).toFixed(0)}MB) and audio extraction failed. Try a shorter video or compress it first.`);
         }
-      }
-
-      // Final size check
-      if (fileForWhisper.size > 25 * 1024 * 1024) {
-        throw new Error(`File too large (${(fileForWhisper.size/1048576).toFixed(0)}MB). Whisper limit is 25MB. Please use a shorter or smaller video.`);
+      } else {
+        fileForWhisper = file;
       }
 
       setProcessing({ step: "transcribing", progress: 35, message: "Sending to Whisper..." });
