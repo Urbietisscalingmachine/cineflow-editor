@@ -601,76 +601,18 @@ export const Toolbar: React.FC = () => {
             >
               <div className="w-8 h-8 group">
                 <svg
-                  viewBox="0 0 490 490"
+                  viewBox="0 0 48 48"
                   fill="none"
                   xmlns="http://www.w3.org/2000/svg"
                   className="w-full h-full text-primary group-hover:scale-110 transition-transform duration-300"
                 >
-                  <path
-                    d="M245 24.5C123.223 24.5 24.5 123.223 24.5 245s98.723 220.5 220.5 220.5 220.5-98.723 220.5-220.5S366.777 24.5 245 24.5Z"
-                    stroke="currentColor"
-                    strokeWidth="30.625"
-                    className="opacity-100"
-                  />
-                  <g className="origin-center group-hover:rotate-90 transition-transform duration-500 ease-out">
-                    <path
-                      d="M245 98v73.5"
-                      stroke="currentColor"
-                      strokeWidth="24.5"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d="M392 245h-73.5"
-                      stroke="currentColor"
-                      strokeWidth="24.5"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d="M245 392v-73.5"
-                      stroke="currentColor"
-                      strokeWidth="24.5"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d="M98 245h73.5"
-                      stroke="currentColor"
-                      strokeWidth="24.5"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d="m348.941 141.059-51.965 51.965"
-                      stroke="currentColor"
-                      strokeWidth="24.5"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d="m348.941 348.941-51.965-51.965"
-                      stroke="currentColor"
-                      strokeWidth="24.5"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d="m141.059 348.941 51.965-51.965"
-                      stroke="currentColor"
-                      strokeWidth="24.5"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d="m141.059 141.059 51.965 51.965"
-                      stroke="currentColor"
-                      strokeWidth="24.5"
-                      strokeLinecap="round"
-                    />
-                  </g>
-                  <path
-                    d="M294 245a49 49 0 0 1-49 49 49 49 0 0 1-49-49 49 49 0 0 1 98 0"
-                    fill="currentColor"
-                    className="group-hover:fill-white transition-colors duration-300"
-                  />
+                  <rect x="2" y="2" width="44" height="44" rx="12" stroke="currentColor" strokeWidth="3" />
+                  <path d="M18 14l16 10-16 10V14z" fill="currentColor" opacity="0.9" />
+                  <circle cx="24" cy="24" r="3" fill="currentColor" opacity="0.4" />
                 </svg>
               </div>
               <span className="text-lg font-medium text-text-primary tracking-wide hidden lg:block">
-                Open Reel
+                Cineflow
               </span>
             </button>
           </TooltipTrigger>

@@ -1,22 +1,16 @@
 /**
- * OpenReel Service Worker
+ * Cineflow Service Worker
  *
  * Handles offline functionality by caching application assets.
  * Implements a cache-first strategy for static assets and network-first for API calls.
- *
- * Requirements: 35.1, 35.2, 35.4
- * - 35.1: Cache all application assets on first load for offline use
- * - 35.2: Function fully for all non-AI features when offline
- * - 35.4: Inform user that AI requires internet connectivity
  */
 
-const CACHE_NAME = "openreel-v1";
-const STATIC_CACHE_NAME = "openreel-static-v1";
-const DYNAMIC_CACHE_NAME = "openreel-dynamic-v1";
+const CACHE_NAME = "cineflow-v1";
+const STATIC_CACHE_NAME = "cineflow-static-v1";
+const DYNAMIC_CACHE_NAME = "cineflow-dynamic-v1";
 
 /**
  * Static assets to cache on install
- * These are the core application files needed for offline functionality
  */
 const STATIC_ASSETS = ["/", "/index.html", "/manifest.json"];
 
@@ -49,35 +43,21 @@ const NO_CACHE_PATTERNS = [
   /\/api\//,
 ];
 
-/**
- * Check if a URL should be cached
- */
 function shouldCache(url) {
   const urlString = url.toString();
-
-  // Never cache AI-related requests
   if (NO_CACHE_PATTERNS.some((pattern) => pattern.test(urlString))) {
     return false;
   }
-
-  // Cache if matches cacheable patterns
   return CACHEABLE_PATTERNS.some((pattern) => pattern.test(urlString));
 }
 
-/**
- * Check if a request is for an AI feature
- */
 function isAIRequest(url) {
   const urlString = url.toString();
   return NO_CACHE_PATTERNS.some((pattern) => pattern.test(urlString));
 }
 
-/**
- * Install event - cache static assets
- */
 self.addEventListener("install", (event) => {
   console.log("[ServiceWorker] Installing...");
-
   event.waitUntil(
     caches
       .open(STATIC_CACHE_NAME)
@@ -87,7 +67,6 @@ self.addEventListener("install", (event) => {
       })
       .then(() => {
         console.log("[ServiceWorker] Static assets cached");
-        // Skip waiting to activate immediately
         return self.skipWaiting();
       })
       .catch((error) => {
@@ -96,12 +75,8 @@ self.addEventListener("install", (event) => {
   );
 });
 
-/**
- * Activate event - clean up old caches
- */
 self.addEventListener("activate", (event) => {
   console.log("[ServiceWorker] Activating...");
-
   event.waitUntil(
     caches
       .keys()
@@ -109,9 +84,8 @@ self.addEventListener("activate", (event) => {
         return Promise.all(
           cacheNames
             .filter((name) => {
-              // Delete old versions of our caches
               return (
-                name.startsWith("openreel-") &&
+                (name.startsWith("cineflow-") || name.startsWith("openreel-")) &&
                 name !== STATIC_CACHE_NAME &&
                 name !== DYNAMIC_CACHE_NAME
               );
@@ -124,46 +98,30 @@ self.addEventListener("activate", (event) => {
       })
       .then(() => {
         console.log("[ServiceWorker] Activated");
-        // Take control of all clients immediately
         return self.clients.claim();
       })
   );
 });
 
-/**
- * Fetch event - serve from cache or network
- */
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Skip non-GET requests
-  if (request.method !== "GET") {
-    return;
-  }
+  if (request.method !== "GET") return;
+  if (!url.protocol.startsWith("http")) return;
 
-  // Skip chrome-extension and other non-http(s) requests
-  if (!url.protocol.startsWith("http")) {
-    return;
-  }
-
-  // Handle AI requests - network only with offline message
   if (isAIRequest(url)) {
     event.respondWith(
       fetch(request).catch(() => {
-        // Return a JSON response indicating AI is unavailable offline
         return new Response(
           JSON.stringify({
             error: "AI_OFFLINE",
-            message:
-              "AI features require an internet connection. Please connect to the internet to use this feature.",
+            message: "AI features require an internet connection.",
           }),
           {
             status: 503,
             statusText: "Service Unavailable",
-            headers: {
-              "Content-Type": "application/json",
-            },
+            headers: { "Content-Type": "application/json" },
           }
         );
       })
@@ -171,12 +129,10 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // For navigation requests (HTML pages), use network-first strategy
   if (request.mode === "navigate") {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          // Cache the response for offline use
           const responseClone = response.clone();
           caches.open(DYNAMIC_CACHE_NAME).then((cache) => {
             cache.put(request, responseClone);
@@ -184,12 +140,8 @@ self.addEventListener("fetch", (event) => {
           return response;
         })
         .catch(() => {
-          // Fall back to cache
           return caches.match(request).then((cachedResponse) => {
-            if (cachedResponse) {
-              return cachedResponse;
-            }
-            // Fall back to index.html for SPA routing
+            if (cachedResponse) return cachedResponse;
             return caches.match("/index.html");
           });
         })
@@ -197,12 +149,10 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // For static assets, use cache-first strategy
   if (shouldCache(url)) {
     event.respondWith(
       caches.match(request).then((cachedResponse) => {
         if (cachedResponse) {
-          // Return cached response and update cache in background
           event.waitUntil(
             fetch(request)
               .then((networkResponse) => {
@@ -212,14 +162,10 @@ self.addEventListener("fetch", (event) => {
                   });
                 }
               })
-              .catch(() => {
-                // Network failed, but we have cache - that's fine
-              })
+              .catch(() => {})
           );
           return cachedResponse;
         }
-
-        // Not in cache, fetch from network
         return fetch(request).then((networkResponse) => {
           if (networkResponse.ok) {
             const responseClone = networkResponse.clone();
@@ -234,41 +180,29 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // For other requests, use network-first strategy
   event.respondWith(
     fetch(request)
-      .then((response) => {
-        return response;
-      })
-      .catch(() => {
-        return caches.match(request);
-      })
+      .then((response) => response)
+      .catch(() => caches.match(request))
   );
 });
 
-/**
- * Message event - handle messages from the main thread
- */
 self.addEventListener("message", (event) => {
-  const { type, payload } = event.data || {};
-
+  const { type } = event.data || {};
   switch (type) {
     case "SKIP_WAITING":
       self.skipWaiting();
       break;
-
     case "GET_CACHE_STATUS":
       getCacheStatus().then((status) => {
         event.ports[0].postMessage({ type: "CACHE_STATUS", payload: status });
       });
       break;
-
     case "CLEAR_CACHE":
       clearAllCaches().then(() => {
         event.ports[0].postMessage({ type: "CACHE_CLEARED" });
       });
       break;
-
     case "CHECK_ONLINE":
       event.ports[0].postMessage({
         type: "ONLINE_STATUS",
@@ -278,39 +212,30 @@ self.addEventListener("message", (event) => {
   }
 });
 
-/**
- * Get cache status information
- */
 async function getCacheStatus() {
   const cacheNames = await caches.keys();
-  let totalSize = 0;
   let totalEntries = 0;
-
   for (const name of cacheNames) {
-    if (name.startsWith("openreel-")) {
+    if (name.startsWith("cineflow-")) {
       const cache = await caches.open(name);
       const keys = await cache.keys();
       totalEntries += keys.length;
     }
   }
-
   return {
-    cacheNames: cacheNames.filter((n) => n.startsWith("openreel-")),
+    cacheNames: cacheNames.filter((n) => n.startsWith("cineflow-")),
     totalEntries,
     version: CACHE_NAME,
   };
 }
 
-/**
- * Clear all OpenReel caches
- */
 async function clearAllCaches() {
   const cacheNames = await caches.keys();
   await Promise.all(
     cacheNames
-      .filter((name) => name.startsWith("openreel-"))
+      .filter((name) => name.startsWith("cineflow-") || name.startsWith("openreel-"))
       .map((name) => caches.delete(name))
   );
 }
 
-console.log("[ServiceWorker] Script loaded");
+console.log("[ServiceWorker] Cineflow script loaded");
