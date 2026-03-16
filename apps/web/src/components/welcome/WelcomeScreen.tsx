@@ -166,14 +166,39 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ initialTab }) => {
       const apiKey = keyData.k || keyData.key || keyData.apiKey;
       if (!apiKey) throw new Error("No API key returned — got: " + JSON.stringify(keyData));
 
-      setProcessing({ step: "transcribing", progress: 25, message: "Sending to Whisper..." });
+      // Step 2: Prepare file for Whisper (extract audio if >20MB)
+      let fileForWhisper: File | Blob = file;
+      
+      if (file.size > 20 * 1024 * 1024) {
+        setProcessing({ step: "transcribing", progress: 15, message: "Extracting audio (large file)..." });
+        try {
+          const { extractAudioForWhisper } = await import("../../lib/extract-audio-ffmpeg");
+          const audioFile = await extractAudioForWhisper(file, (msg, pct) => {
+            setProcessing({ step: "transcribing", progress: 15 + pct * 0.2, message: msg });
+          });
+          if (audioFile) {
+            fileForWhisper = audioFile;
+            console.log(`[cineflow] Audio extracted: ${(audioFile.size/1024).toFixed(0)}KB from ${(file.size/1048576).toFixed(1)}MB video`);
+          }
+        } catch (extractErr) {
+          console.warn("[cineflow] Audio extraction failed, trying raw file:", extractErr);
+        }
+      }
 
-      // Step 2: Transcribe with OpenAI Whisper (client-side)
+      // Final size check
+      if (fileForWhisper.size > 25 * 1024 * 1024) {
+        throw new Error(`File too large (${(fileForWhisper.size/1048576).toFixed(0)}MB). Whisper limit is 25MB. Please use a shorter or smaller video.`);
+      }
+
+      setProcessing({ step: "transcribing", progress: 35, message: "Sending to Whisper..." });
+
+      // Transcribe with OpenAI Whisper (client-side)
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", fileForWhisper as File);
       formData.append("model", "whisper-1");
       formData.append("response_format", "verbose_json");
       formData.append("timestamp_granularities[]", "segment");
+      formData.append("language", "lt");
 
       const whisperRes = await fetch("https://api.openai.com/v1/audio/transcriptions", {
         method: "POST",
