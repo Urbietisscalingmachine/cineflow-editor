@@ -193,7 +193,9 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ initialTab }) => {
       formData.append("model", "whisper-1");
       formData.append("response_format", "verbose_json");
       formData.append("timestamp_granularities[]", "segment");
+      formData.append("timestamp_granularities[]", "word");
       formData.append("language", "lt");
+      formData.append("prompt", "Tai lietuviškas vaizdo įrašas. Kalbama grynai lietuviškai.");
 
       const whisperRes = await fetch("https://api.openai.com/v1/audio/transcriptions", {
         method: "POST",
@@ -207,13 +209,95 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ initialTab }) => {
       }
 
       const whisperData = await whisperRes.json();
-      const transcript = whisperData.text || "";
-      const segments: { start: number; end: number; text: string }[] =
-        (whisperData.segments || []).map((s: { start: number; end: number; text: string }) => ({
-          start: s.start,
-          end: s.end,
-          text: s.text,
+      let transcript = whisperData.text || "";
+
+      // Parse word-level timestamps
+      const rawWords: { word: string; start: number; end: number }[] =
+        (whisperData.words || []).map((w: { word: string; start: number; end: number }) => ({
+          word: (w.word || "").trim(),
+          start: w.start,
+          end: w.end,
         }));
+
+      // ── GPT-4o Lithuanian polishing ──────────────────
+      setProcessing({ step: "transcribing", progress: 50, message: "Tobulinama lietuvių kalba..." });
+
+      let polishedWords = rawWords;
+      try {
+        const wordsForAI = rawWords.map((w) => w.word);
+        const polishSystemPrompt = `Tu esi profesionalus lietuvių kalbos redaktorius. Ištaisyk automatinės transkripcijos (Whisper) klaidas.
+
+TAISYKLĖS:
+1. Ištaisyk rašybos klaidas (galūnes, prielinksnius, jungtukus)
+2. Jei žodis neteisingas — pakeisk artimiausiu teisingu lietuvišku žodžiu
+3. PRIVALAI grąžinti TIKSLIAI tiek pat žodžių kiek gavai — tai būtina timestamps sinchronizacijai
+4. NEKEISK žodžių tvarkos
+5. Vardus, svetimžodžius, anglicizmus palik kaip yra
+6. Grąžink JSON: {"words": ["pataisytas", "žodis", ...]}`;
+
+        const polishRes = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "gpt-4o",
+            messages: [
+              { role: "system", content: polishSystemPrompt },
+              { role: "user", content: `Ištaisyk šiuos ${wordsForAI.length} žodžius (PRIVALAI grąžinti tiksliai ${wordsForAI.length} žodžių):\n\n${JSON.stringify(wordsForAI)}` },
+            ],
+            temperature: 0.1,
+            response_format: { type: "json_object" },
+          }),
+        });
+
+        if (polishRes.ok) {
+          const gptData = await polishRes.json();
+          const content = gptData.choices?.[0]?.message?.content;
+          if (content) {
+            const parsed = JSON.parse(content);
+            const fixedWords: string[] = parsed.words || parsed.segments || [];
+            if (fixedWords.length === rawWords.length) {
+              polishedWords = rawWords.map((w, i) => ({ ...w, word: fixedWords[i] }));
+              transcript = fixedWords.join(" ");
+              console.log("[polish] Lithuanian transcript polished successfully");
+            } else {
+              console.warn(`[polish] Word count mismatch: got ${fixedWords.length}, expected ${rawWords.length}. Using raw.`);
+            }
+          }
+        }
+      } catch (polishErr) {
+        console.warn("[polish] GPT-4o polish failed, using raw Whisper:", polishErr);
+      }
+
+      // ── Build short caption segments (2-4 words each) ──
+      const WORDS_PER_CAPTION = 3; // target 2-4 words per caption
+      const segments: { start: number; end: number; text: string }[] = [];
+
+      if (polishedWords.length > 0) {
+        for (let i = 0; i < polishedWords.length; i += WORDS_PER_CAPTION) {
+          const chunk = polishedWords.slice(i, Math.min(i + WORDS_PER_CAPTION, polishedWords.length));
+          // Don't leave 1 word orphaned — merge with previous
+          if (chunk.length === 1 && segments.length > 0) {
+            const prev = segments[segments.length - 1];
+            prev.end = chunk[0].end;
+            prev.text = prev.text + " " + chunk[0].word;
+          } else {
+            segments.push({
+              start: chunk[0].start,
+              end: chunk[chunk.length - 1].end,
+              text: chunk.map((w) => w.word).join(" "),
+            });
+          }
+        }
+      } else {
+        // Fallback to sentence-level segments if no words
+        const rawSegments = whisperData.segments || [];
+        for (const s of rawSegments) {
+          segments.push({ start: s.start, end: s.end, text: s.text });
+        }
+      }
 
       setProcessing({ step: "analyzing", progress: 60, message: "Analyzing content..." });
 
