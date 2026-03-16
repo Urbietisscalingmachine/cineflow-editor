@@ -163,8 +163,8 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ initialTab }) => {
       const keyRes = await fetch(`${API_BASE}/api/whisper-key`);
       if (!keyRes.ok) throw new Error("Failed to get API key");
       const keyData = await keyRes.json();
-      const apiKey = keyData.key || keyData.apiKey;
-      if (!apiKey) throw new Error("No API key returned");
+      const apiKey = keyData.k || keyData.key || keyData.apiKey;
+      if (!apiKey) throw new Error("No API key returned — got: " + JSON.stringify(keyData));
 
       setProcessing({ step: "transcribing", progress: 25, message: "Sending to Whisper..." });
 
